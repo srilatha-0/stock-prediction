@@ -1,0 +1,38 @@
+stock_prediction/         ← Project root
+│
+├── venv/                 ← Virtual environment (isolated Python)
+├── data/                 ← Stock CSVs, news data
+├── src/                  ← Python scripts
+│   ├── fetch_data.py     ← Stock & news scraping
+│   ├── indicators.py     ← Technical features
+│   ├── sentiment.py      ← News sentiment
+│   ├── train_model.py    ← XGBoost training
+│   └── predict.py        ← Prediction logic
+├── models/               ← Saved trained models (.pkl)
+├── notebooks/            ← Experimentation notebooks
+├── dashboard/            ← Streamlit app
+├── README.md
+└── requirements.txt
+
+
+Fetch stock prices & news headlines
+
+Preprocess data & compute indicators
+
+Analyze news sentiment (FinBERT)
+
+Train XGBoost model
+
+Predict likely profitable stocks
+
+Show results in Streamlit dashboard
+
+Log predictions & model performance
+
+Optional future upgrades:
+
+Auto daily updates
+
+Backtesting module
+
+Broker API integration
