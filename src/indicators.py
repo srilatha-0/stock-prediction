@@ -1,69 +1,48 @@
 import pandas as pd
 import os
 
-# -----------------------
-# Paths
-# -----------------------
 DATA_DIR = "../data"
-INPUT_CSV = os.path.join(DATA_DIR, "stocks_all.csv")  # <-- fixed file name
-OUTPUT_CSV = os.path.join(DATA_DIR, "stocks_all_preprocessed.csv")
+INPUT_FILE = os.path.join(DATA_DIR, "stocks_all.csv")
+OUTPUT_FILE = os.path.join(DATA_DIR, "stocks_all_preprocessed.csv")
 
-# -----------------------
-# Load cleaned stock data
-# -----------------------
-if not os.path.exists(INPUT_CSV):
-    raise FileNotFoundError(f"CSV file not found: {INPUT_CSV}. Make sure it exists in data/ folder.")
+df = pd.read_csv(INPUT_FILE)
 
-df = pd.read_csv(INPUT_CSV)
+# Ensure Date format
+df['Date'] = pd.to_datetime(df['Date'])
 
-# Convert Date to datetime and sort
-df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
-df = df.sort_values(by=['Ticker', 'Date']).reset_index(drop=True)
+# Sort properly
+df = df.sort_values(['Ticker','Date'])
 
-# -----------------------
-# Compute technical indicators
-# -----------------------
-all_tickers = df['Ticker'].unique()
-processed_data = []
+# --- Technical Indicators ---
 
-for stock in all_tickers:
-    df_stock = df[df['Ticker'] == stock].copy()
-    df_stock = df_stock.sort_values(by='Date').reset_index(drop=True)
+# Moving Averages
+df['MA10'] = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(10).mean())
+df['MA20'] = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(20).mean())
 
-    # 1️⃣ Moving Averages
-    df_stock['MA10'] = df_stock['Close'].rolling(window=10).mean()
-    df_stock['MA50'] = df_stock['Close'].rolling(window=50).mean()
+# Exponential Moving Averages
+df['EMA10'] = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=10, adjust=False).mean())
+df['EMA20'] = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=20, adjust=False).mean())
 
-    # 2️⃣ Exponential Moving Average
-    df_stock['EMA10'] = df_stock['Close'].ewm(span=10, adjust=False).mean()
-
-    # 3️⃣ Daily Return
-    df_stock['Return'] = df_stock['Close'].pct_change()
-
-    # 4️⃣ Relative Strength Index (RSI)
-    delta = df_stock['Close'].diff()
+# RSI
+def compute_rsi(series, period=14):
+    delta = series.diff()
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
-    avg_gain = gain.rolling(window=14).mean()
-    avg_loss = loss.rolling(window=14).mean()
+    avg_gain = gain.rolling(period).mean()
+    avg_loss = loss.rolling(period).mean()
     rs = avg_gain / avg_loss
-    df_stock['RSI'] = 100 - (100 / (1 + rs))
+    return 100 - (100 / (1 + rs))
 
-    # 5️⃣ Volume Change
-    df_stock['Volume_Change'] = df_stock['Volume'].pct_change()
+df['RSI'] = df.groupby('Ticker')['Close'].transform(compute_rsi)
 
-    # Drop initial rows with NaN due to indicators
-    df_stock = df_stock.dropna().reset_index(drop=True)
+# MACD
+exp12 = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=12, adjust=False).mean())
+exp26 = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=26, adjust=False).mean())
+df['MACD'] = exp12 - exp26
 
-    processed_data.append(df_stock)
+# Drop initial NaN rows from rolling calculations
+df = df.dropna()
 
-# -----------------------
-# Combine all tickers
-# -----------------------
-final_df = pd.concat(processed_data, ignore_index=True)
-
-# Save preprocessed CSV
-final_df.to_csv(OUTPUT_CSV, index=False)
-print(f"✅ Preprocessed stock data saved: {OUTPUT_CSV}")
-print(f"Columns: {final_df.columns.tolist()}")
-print(f"Rows: {len(final_df)}")
+# Save
+df.to_csv(OUTPUT_FILE, index=False)
+print("Indicators computed → stocks_all_preprocessed.csv created")
