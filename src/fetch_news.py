@@ -1,81 +1,48 @@
-import finnhub
-from dotenv import load_dotenv
-import os
+import yfinance as yf
 import pandas as pd
-from datetime import datetime, timedelta
+import os
+from time import sleep
 
-# -----------------------------
-# Load API key from .env
-# -----------------------------
-load_dotenv()
-api_key = os.getenv("FINNHUB_API_KEY")
-if not api_key:
-    raise ValueError("API key not found. Add FINNHUB_API_KEY to your .env file.")
-
-# Initialize Finnhub client
-client = finnhub.Client(api_key=api_key)
-
-# -----------------------------
-# Configuration
-# -----------------------------
-stocks = ["RELIANCE", "TCS", "INFY"]  # list of stock tickers/companies
-data_dir = "../data"                   # folder to save CSV
+data_dir = "../data"
 os.makedirs(data_dir, exist_ok=True)
-file_path = os.path.join(data_dir, "news_headlines.csv")
 
-# Load existing CSV if exists
-if os.path.exists(file_path):
-    df_existing = pd.read_csv(file_path)
-else:
-    df_existing = pd.DataFrame(columns=["Date", "Stock", "Headline", "Timestamp"])
+# Load cleaned CSV (only SYMBOL column)
+tickers_csv = os.path.join(data_dir, "stockNames.csv")
+tickers_df = pd.read_csv(tickers_csv)
+tickers_df.columns = tickers_df.columns.str.strip()
+stocks = tickers_df['SYMBOL'].tolist()
 
-# -----------------------------
-# Fetch news per stock
-# -----------------------------
-news_data = []
-today = datetime.today()
-from_date = (today - timedelta(days=2)).strftime("%Y-%m-%d")  # last 2 days
-to_date = today.strftime("%Y-%m-%d")
+all_data = []
 
 for stock in stocks:
     try:
-        # Fetch latest company news
-        articles = client.company_news(stock, _from=from_date, to=to_date)
+        ticker_symbol = stock.strip() + ".NS"
+        print(f"Fetching data for {ticker_symbol}...")
 
-        # Fallback to general news if no company news
-        if not articles:
-            print(f"No company news for {stock}, falling back to general news.")
-            articles = client.general_news('general', min_id=0)
+        df = yf.download(ticker_symbol, period="3y", interval="1d")
+        if df.empty:
+            print(f"No data for {stock}, skipping.")
+            continue
 
-        for article in articles[:5]:  # first 5 headlines
-            headline = article.get("headline", "").strip()
-            if headline:
-                news_data.append({
-                    "Date": today.strftime("%Y-%m-%d"),
-                    "Stock": stock,
-                    "Headline": headline,
-                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
+        df.reset_index(inplace=True)
 
-        print(f"Fetched {len(articles[:5])} headlines for {stock}")
+        # Keep only required columns
+        cols = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+        df = df[[c for c in cols if c in df.columns]]
+
+        # Add Ticker column
+        df['Ticker'] = stock
+
+        all_data.append(df)
+
+        sleep(1)
 
     except Exception as e:
-        print(f"Error fetching news for {stock}: {e}")
+        print(f"Error fetching data for {stock}: {e}")
 
-# -----------------------------
-# Append new data, remove duplicates, and save CSV
-# -----------------------------
-if news_data:
-    df_new = pd.DataFrame(news_data)
-    
-    # Combine with existing CSV
-    df_final = pd.concat([df_existing, df_new], ignore_index=True)
-    
-    # Remove duplicates based on Stock + Headline
-    df_final.drop_duplicates(subset=["Stock", "Headline"], inplace=True)
-    
-    # Save CSV
-    df_final.to_csv(file_path, index=False)
-    print(f"News headlines saved! Total records now: {len(df_final)}")
+if all_data:
+    combined_df = pd.concat(all_data, ignore_index=True)
+    combined_df.to_csv(os.path.join(data_dir, "stocks_all.csv"), index=False)
+    print(f"All stocks data saved! Rows: {len(combined_df)}")
 else:
-    print("No new headlines to save today.")
+    print("No data fetched for any stock!")
